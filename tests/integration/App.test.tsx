@@ -25,8 +25,13 @@ describe("App integration", () => {
     const { default: App } = await import("@/App");
     renderApp(App);
 
-    expect(screen.getByText("Token Use")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "消耗统计" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("navigation", { name: "主导航" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /统计/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "消耗统计" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Provider")).not.toBeInTheDocument();
 
     await waitFor(() => {
@@ -42,8 +47,12 @@ describe("App integration", () => {
 
     expect(screen.getByRole("heading", { name: "排行" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByText("使用 GitHub 登录后查看排行")).toBeInTheDocument();
+      expect(
+        screen.getByText("使用 GitHub 登录后查看排行"),
+      ).toBeInTheDocument();
     });
-    expect(screen.queryByRole("heading", { name: "消耗统计" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "消耗统计" }),
+    ).not.toBeInTheDocument();
   });
 });

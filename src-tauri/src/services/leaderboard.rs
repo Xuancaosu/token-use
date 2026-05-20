@@ -33,20 +33,21 @@ impl LeaderboardRange {
     fn window(self) -> (i64, i64) {
         let now = Local::now();
         let end = now.timestamp();
-        match self {
-            Self::Today => {
-                let Some(start_naive) = now.date_naive().and_hms_opt(0, 0, 0) else {
-                    return (end, end);
-                };
-                let start = match Local.from_local_datetime(&start_naive) {
-                    LocalResult::Single(dt) => dt.timestamp(),
-                    LocalResult::Ambiguous(dt, _) => dt.timestamp(),
-                    LocalResult::None => (now - Duration::hours(24)).timestamp(),
-                };
-                (start, end)
+        let start_of_day = |days_ago: i64| {
+            let base = now - Duration::days(days_ago);
+            let Some(start_naive) = base.date_naive().and_hms_opt(0, 0, 0) else {
+                return end;
+            };
+            match Local.from_local_datetime(&start_naive) {
+                LocalResult::Single(dt) => dt.timestamp(),
+                LocalResult::Ambiguous(dt, _) => dt.timestamp(),
+                LocalResult::None => (base - Duration::hours(24)).timestamp(),
             }
-            Self::SevenDays => ((now - Duration::days(7)).timestamp(), end),
-            Self::ThirtyDays => ((now - Duration::days(30)).timestamp(), end),
+        };
+        match self {
+            Self::Today => (start_of_day(0), end),
+            Self::SevenDays => (start_of_day(6), end),
+            Self::ThirtyDays => (start_of_day(29), end),
         }
     }
 }
@@ -809,30 +810,15 @@ impl Database {
         window_start: i64,
         window_end: i64,
     ) -> Result<LocalSnapshot, AppError> {
-        let conn = lock_conn!(self.conn);
-        conn.query_row(
-            "SELECT
-                COALESCE(SUM(input_tokens), 0),
-                COALESCE(SUM(output_tokens), 0),
-                COALESCE(SUM(cache_read_tokens), 0),
-                COALESCE(SUM(cache_creation_tokens), 0),
-                COUNT(*),
-                printf('%.6f', COALESCE(SUM(CAST(total_cost_usd AS REAL)), 0))
-             FROM proxy_request_logs
-             WHERE created_at >= ?1 AND created_at <= ?2",
-            params![window_start, window_end],
-            |row| {
-                Ok(LocalSnapshot {
-                    input_tokens: row.get(0)?,
-                    output_tokens: row.get(1)?,
-                    cache_read_tokens: row.get(2)?,
-                    cache_creation_tokens: row.get(3)?,
-                    request_count: row.get(4)?,
-                    total_cost_usd: row.get(5)?,
-                })
-            },
-        )
-        .map_err(AppError::from)
+        let summary = self.get_usage_summary(Some(window_start), Some(window_end), None)?;
+        Ok(LocalSnapshot {
+            input_tokens: summary.total_input_tokens as i64,
+            output_tokens: summary.total_output_tokens as i64,
+            cache_read_tokens: summary.total_cache_read_tokens as i64,
+            cache_creation_tokens: summary.total_cache_creation_tokens as i64,
+            request_count: summary.total_requests as i64,
+            total_cost_usd: summary.total_cost,
+        })
     }
 
     fn upsert_local_snapshot(
@@ -1028,6 +1014,163 @@ mod tests {
         assert_eq!(result.entries[1].rank, 2);
         assert_eq!(result.entries[1].total_tokens, 180);
         assert!(result.entries[1].is_current_user);
+        Ok(())
+    }
+
+    #[test]
+    fn leaderboard_range_windows_match_usage_presets() {
+        let now = Local::now();
+        let expected_start = |days_ago: i64| {
+            let base = now - Duration::days(days_ago);
+            let start_naive = base
+                .date_naive()
+                .and_hms_opt(0, 0, 0)
+                .expect("valid local day start");
+            match Local.from_local_datetime(&start_naive) {
+                LocalResult::Single(dt) => dt.timestamp(),
+                LocalResult::Ambiguous(dt, _) => dt.timestamp(),
+                LocalResult::None => (base - Duration::hours(24)).timestamp(),
+            }
+        };
+
+        let (today_start, _) = LeaderboardRange::Today.window();
+        let (seven_start, _) = LeaderboardRange::SevenDays.window();
+        let (thirty_start, _) = LeaderboardRange::ThirtyDays.window();
+
+        assert_eq!(today_start, expected_start(0));
+        assert_eq!(seven_start, expected_start(6));
+        assert_eq!(thirty_start, expected_start(29));
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn insert_usage_log(
+        db: &Database,
+        request_id: &str,
+        app_type: &str,
+        provider_id: &str,
+        model: &str,
+        data_source: &str,
+        created_at: i64,
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
+        total_cost_usd: &str,
+    ) -> Result<(), AppError> {
+        let conn = lock_conn!(db.conn);
+        conn.execute(
+            "INSERT INTO proxy_request_logs (
+                request_id, provider_id, app_type, model, request_model,
+                input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+                input_cost_usd, output_cost_usd, cache_read_cost_usd, cache_creation_cost_usd,
+                total_cost_usd, latency_ms, status_code, created_at, data_source
+            ) VALUES (?1, ?2, ?3, ?4, ?4, ?5, ?6, ?7, ?8, '0', '0', '0', '0', ?9, 100, 200, ?10, ?11)",
+            params![
+                request_id,
+                provider_id,
+                app_type,
+                model,
+                input_tokens,
+                output_tokens,
+                cache_read_tokens,
+                cache_creation_tokens,
+                total_cost_usd,
+                created_at,
+                data_source
+            ],
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn leaderboard_snapshot_matches_usage_summary_effective_tokens() -> Result<(), AppError> {
+        let db = Database::memory()?;
+        let range = LeaderboardRange::Today;
+        let (_window_start, window_end) = range.window();
+        db.upsert_leaderboard_profile("u1", "alice", "Alice", None, true, None)?;
+
+        insert_usage_log(
+            &db,
+            "codex-proxy",
+            "codex",
+            "openai",
+            "gpt-5.4",
+            "proxy",
+            window_end - 120,
+            100,
+            20,
+            10,
+            7,
+            "0.100000",
+        )?;
+        insert_usage_log(
+            &db,
+            "codex-session-dup",
+            "codex",
+            "_codex_session",
+            "gpt-5.4",
+            "codex_session",
+            window_end - 60,
+            100,
+            20,
+            10,
+            0,
+            "0.100000",
+        )?;
+        insert_usage_log(
+            &db,
+            "gemini-proxy",
+            "gemini",
+            "google",
+            "gemini-2.5-pro",
+            "proxy",
+            window_end - 120,
+            200,
+            40,
+            30,
+            0,
+            "0.200000",
+        )?;
+        insert_usage_log(
+            &db,
+            "gemini-session-dup",
+            "gemini",
+            "_gemini_session",
+            "gemini-2.5-pro",
+            "gemini_session",
+            window_end - 60,
+            200,
+            40,
+            30,
+            0,
+            "0.200000",
+        )?;
+        insert_usage_log(
+            &db,
+            "claude-proxy",
+            "claude",
+            "anthropic",
+            "claude-sonnet-4-5",
+            "proxy",
+            window_end - 90,
+            300,
+            60,
+            20,
+            5,
+            "0.300000",
+        )?;
+
+        let summary = db.get_usage_summary(Some(window_end - 300), Some(window_end), None)?;
+        let result = db.get_leaderboard_entries(range)?;
+        let current = result
+            .entries
+            .iter()
+            .find(|entry| entry.is_current_user)
+            .expect("current user should appear in leaderboard");
+
+        assert_eq!(summary.real_total_tokens, 752);
+        assert_eq!(current.total_tokens as u64, summary.real_total_tokens);
+        assert_eq!(current.request_count as u64, summary.total_requests);
         Ok(())
     }
 }

@@ -78,4 +78,71 @@ describe("LeaderboardPage", () => {
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("ABCD-1234")).toBeInTheDocument();
   });
+
+  it("can manually refresh leaderboard entries", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    const refetch = vi.fn();
+    leaderboardState.useLeaderboardProfile.mockReturnValue({
+      data: {
+        userId: "u1",
+        githubLogin: "alice",
+        displayName: "Alice",
+        optedIn: true,
+      },
+      isLoading: false,
+    });
+    leaderboardState.useLeaderboardEntries.mockReturnValue({
+      data: {
+        entries: [
+          {
+            rank: 1,
+            userId: "u1",
+            githubLogin: "alice",
+            displayName: "Alice",
+            totalTokens: 2100,
+            inputTokens: 1200,
+            outputTokens: 600,
+            cacheReadTokens: 200,
+            cacheCreationTokens: 100,
+            requestCount: 2,
+            totalCostUsd: "0.030000",
+            isCurrentUser: true,
+          },
+        ],
+      },
+      isLoading: false,
+      isFetching: false,
+      refetch,
+    });
+    leaderboardState.useGithubLoginStatus.mockReturnValue({
+      data: null,
+    });
+    leaderboardState.useStartGithubLogin.mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    });
+    leaderboardState.useLeaderboardOptIn.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    });
+    leaderboardState.useLeaderboardSignOut.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <LeaderboardPage />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "刷新榜单" }));
+
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
 });

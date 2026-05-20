@@ -3,6 +3,7 @@ import {
   Github,
   Loader2,
   LogOut,
+  RefreshCw,
   ShieldCheck,
   Timer,
   Trophy,
@@ -71,8 +72,12 @@ export function LeaderboardPage() {
   const optIn = useLeaderboardOptIn();
   const signOut = useLeaderboardSignOut();
   const canLoadEntries = Boolean(profile?.optedIn);
-  const { data: leaderboard, isLoading: isEntriesLoading } =
-    useLeaderboardEntries(leaderboardRange, canLoadEntries);
+  const {
+    data: leaderboard,
+    isLoading: isEntriesLoading,
+    isFetching: isEntriesFetching,
+    refetch: refetchLeaderboard,
+  } = useLeaderboardEntries(leaderboardRange, canLoadEntries);
   const pollIntervalMs = Math.max(5, loginSession?.intervalSeconds ?? 5) * 1000;
   const loginStatus = useGithubLoginStatus(
     loginSession?.sessionId,
@@ -129,7 +134,26 @@ export function LeaderboardPage() {
           </p>
         </div>
 
-        <UsageRangeSwitch value={range} onChange={setRange} />
+        <div className="flex flex-wrap items-center gap-2">
+          <UsageRangeSwitch value={range} onChange={setRange} />
+          {profile && profile.optedIn && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 rounded-xl border-black/10 bg-background/70 px-2.5 text-xs shadow-sm dark:border-white/10"
+              onClick={() => {
+                void refetchLeaderboard();
+              }}
+              disabled={isEntriesFetching}
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${isEntriesFetching ? "animate-spin" : ""}`}
+              />
+              刷新榜单
+            </Button>
+          )}
+        </div>
       </div>
 
       {isProfileLoading ? (
