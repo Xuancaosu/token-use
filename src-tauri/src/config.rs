@@ -13,7 +13,7 @@ use crate::error::AppError;
 /// - `dirs::home_dir()` 在 Windows 上使用 `SHGetKnownFolderPath(FOLDERID_Profile)`，
 ///   返回的是真实用户目录（类似 `C:\\Users\\Alice`），与 v3.10.2 行为一致。
 /// - 不要直接使用 `HOME` 环境变量：它可能由 Git/Cygwin/MSYS 等第三方工具注入，
-///   且不一定等于用户目录，可能导致 `.cc-switch/cc-switch.db` 路径变化，从而“看起来像数据丢失”。
+///   且不一定等于用户目录，可能导致 `.token-use/token-use.db` 路径变化，从而“看起来像数据丢失”。
 ///
 /// ## 测试隔离
 ///
@@ -86,29 +86,29 @@ pub fn get_claude_settings_path() -> PathBuf {
     settings
 }
 
-/// 获取应用配置目录路径 (~/.cc-switch)
+/// 获取应用配置目录路径 (~/.token-use)
 pub fn get_app_config_dir() -> PathBuf {
     if let Some(custom) = crate::app_store::get_app_config_dir_override() {
         return custom;
     }
 
-    let default_dir = get_home_dir().join(".cc-switch");
+    let default_dir = get_home_dir().join(".token-use");
 
     // 兼容 v3.10.3：当用户环境存在 `HOME` 且与真实用户目录不同，
-    // v3.10.3 可能在 `HOME/.cc-switch/` 下创建/使用了数据库。
+    // v3.10.3 可能在 `HOME/.token-use/` 下创建/使用了数据库。
     // 这里仅在“默认位置没有数据库”时回退到旧位置，避免再次出现“供应商消失”问题，
     // 同时也避免新安装因为 `HOME` 被设置而写入非预期路径。
     #[cfg(windows)]
     {
-        let default_db = default_dir.join("cc-switch.db");
+        let default_db = default_dir.join("token-use.db");
         if !default_db.exists() {
             if let Ok(home_env) = std::env::var("HOME") {
                 let trimmed = home_env.trim();
                 if !trimmed.is_empty() {
-                    let legacy_dir = PathBuf::from(trimmed).join(".cc-switch");
-                    if legacy_dir.join("cc-switch.db").exists() {
+                    let legacy_dir = PathBuf::from(trimmed).join(".token-use");
+                    if legacy_dir.join("token-use.db").exists() {
                         log::info!(
-                            "Detected v3.10.3 legacy database at {}, using it instead of {}",
+                            "Detected legacy Token Use database at {}, using it instead of {}",
                             legacy_dir.display(),
                             default_dir.display()
                         );
@@ -261,6 +261,18 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn app_config_dir_defaults_to_token_monitor_home() {
+        let dir = get_app_config_dir();
+        assert!(dir.ends_with(".token-use"));
+    }
+
+    #[test]
+    fn app_config_path_uses_token_monitor_dir() {
+        let path = get_app_config_path();
+        assert!(path.ends_with(PathBuf::from(".token-use").join("config.json")));
+    }
 
     #[test]
     fn derive_mcp_path_from_override_preserves_folder_name() {

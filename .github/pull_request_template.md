@@ -1,25 +1,27 @@
 ## Summary / 概述
 
-<!-- Briefly describe what this PR does and why. / 简要描述这个 PR 做了什么以及为什么。 -->
+<!-- Briefly describe what changed and why it belongs in Token Use. -->
+<!-- 简要说明改动内容，以及为什么它属于 Token Use。 -->
 
-## Related Issue / 关联 Issue
+## Area / 范围
 
-<!-- Link the related issue. Use "Fixes #123" to auto-close it when merged. -->
-<!-- 关联相关 Issue。使用 "Fixes #123" 可在合并时自动关闭。 -->
-
-Fixes #
+<!-- Usage, menu bar, GitHub login, leaderboard, backend, docs, packaging, etc. -->
+<!-- 用量统计、菜单栏、GitHub 登录、排行、后端、文档、打包等。 -->
 
 ## Screenshots / 截图
 
-<!-- If applicable, add before/after screenshots. / 如有需要，请添加修改前后的截图。 -->
+<!-- Add screenshots for UI changes when possible. -->
+<!-- UI 改动尽量附截图。 -->
 
-| Before / 修改前 | After / 修改后 |
-|-----------------|---------------|
-|                 |               |
+## Checks / 检查
 
-## Checklist / 检查清单
+- [ ] `pnpm typecheck`
+- [ ] `pnpm test:unit`
+- [ ] `node --check backend/src/server.js` if backend changed
+- [ ] `cargo test --manifest-path src-tauri/Cargo.toml` if Tauri/Rust changed
+- [ ] `pnpm build` if packaging changed
 
-- [ ] `pnpm typecheck` passes / 通过 TypeScript 类型检查
-- [ ] `pnpm format:check` passes / 通过代码格式检查
-- [ ] `cargo clippy` passes (if Rust code changed) / 通过 Clippy 检查（如修改了 Rust 代码）
-- [ ] Updated i18n files if user-facing text changed / 如修改了用户可见文本，已更新国际化文件
+## Privacy / 隐私
+
+- [ ] This change does not upload raw local request logs.
+- [ ] This change does not expose tokens, secrets, or personal usage data.

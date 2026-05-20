@@ -184,8 +184,8 @@ export function UsageHero({
 
   if (isLoading) {
     return (
-      <Card className="border border-border/50 bg-card/40 backdrop-blur-sm">
-        <CardContent className="flex items-center justify-center min-h-[200px]">
+      <Card className="rounded-2xl border border-black/10 bg-background/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] dark:border-white/10">
+        <CardContent className="flex min-h-[188px] items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/50" />
         </CardContent>
       </Card>
@@ -201,13 +201,12 @@ export function UsageHero({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
-      <Card className="relative overflow-hidden border border-border/50 bg-gradient-to-br from-primary/5 via-card/50 to-background/50 backdrop-blur-xl shadow-sm">
-        <CardContent className="p-6 md:p-8">
-          {/* Header: title + cost */}
-          <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
+      <Card className="relative overflow-hidden rounded-2xl border border-black/10 bg-background/85 shadow-[0_1px_2px_rgba(0,0,0,0.04)] backdrop-blur-xl dark:border-white/10 dark:bg-background/70">
+        <CardContent className="p-5">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-center gap-2">
-              <div className={cn("p-2 rounded-lg", titleTheme.iconBg)}>
-                <Zap className={cn("h-4 w-4", titleTheme.accent)} />
+              <div className={cn("rounded-lg p-1.5", titleTheme.iconBg)}>
+                <Zap className={cn("h-3.5 w-3.5", titleTheme.accent)} />
               </div>
               <span className="text-sm font-medium text-muted-foreground">
                 {appLabel && (
@@ -226,7 +225,7 @@ export function UsageHero({
                 <span className="text-xs text-muted-foreground">
                   {t("usage.totalRequests")}
                 </span>
-                <span className="text-sm font-semibold flex items-center gap-1 justify-end">
+                <span className="flex items-center justify-end gap-1 text-sm font-semibold">
                   <Activity className="h-3.5 w-3.5 text-blue-500" />
                   {requests.toLocaleString()}
                 </span>
@@ -242,22 +241,20 @@ export function UsageHero({
             </div>
           </div>
 
-          {/* Hero number */}
-          <div className="flex flex-col items-start mb-6">
+          <div className="mb-5 flex flex-col items-start">
             <div
-              className="text-4xl md:text-5xl font-bold tracking-tight tabular-nums leading-tight"
+              className="text-[40px] font-semibold leading-none tracking-normal tabular-nums md:text-[48px]"
               title={realTotal.toLocaleString()}
             >
               {realTotal.toLocaleString()}
             </div>
-            <div className="text-sm text-muted-foreground mt-1">
+            <div className="mt-1.5 text-sm text-muted-foreground">
               ≈ {formatTokensShort(realTotal, lang, 2)}{" "}
               {t("usage.tokensSuffix", "tokens")}
             </div>
           </div>
 
-          {/* Breakdown row: 4 mini stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <div className="mb-5 grid grid-cols-2 gap-2.5 md:grid-cols-4">
             <MiniStat
               icon={<ArrowDownToLine className="h-3.5 w-3.5" />}
               label={t("usage.freshInput", "新增输入")}
@@ -286,7 +283,6 @@ export function UsageHero({
             />
           </div>
 
-          {/* Hit rate progress */}
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">
@@ -296,9 +292,9 @@ export function UsageHero({
                 {hitPercentLabel}%
               </span>
             </div>
-            <div className="relative h-2 rounded-full bg-muted/50 overflow-hidden">
+            <div className="relative h-1.5 overflow-hidden rounded-full bg-muted/50">
               <motion.div
-                className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-500/80 to-emerald-400 rounded-full"
+                className="absolute inset-y-0 left-0 rounded-full bg-emerald-500/80"
                 initial={{ width: 0 }}
                 animate={{ width: `${hitPercent}%` }}
                 transition={{ duration: 0.8, ease: "easeOut" }}
@@ -332,7 +328,7 @@ function MiniStat({
 }: MiniStatProps) {
   return (
     <div
-      className="flex flex-col gap-1 rounded-lg border border-border/40 bg-background/40 px-3 py-2.5"
+      className="flex flex-col gap-1 rounded-xl bg-muted/35 px-3 py-2.5"
       title={tooltip}
     >
       <div

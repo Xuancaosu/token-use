@@ -98,7 +98,7 @@ fn redact_url_for_log(url_str: &str) -> String {
     }
 }
 
-/// 统一处理 ccswitch:// 深链接 URL
+/// 统一处理 tokenuse:// 深链接 URL（兼容旧的 ccswitch://）
 ///
 /// - 解析 URL
 /// - 向前端发射 `deeplink-import` / `deeplink-error` 事件
@@ -109,7 +109,7 @@ fn handle_deeplink_url(
     focus_main_window: bool,
     source: &str,
 ) -> bool {
-    if !url_str.starts_with("ccswitch://") {
+    if !url_str.starts_with("tokenuse://") && !url_str.starts_with("ccswitch://") {
         return false;
     }
 
@@ -163,28 +163,6 @@ fn handle_deeplink_url(
     true
 }
 
-/// 更新托盘菜单的Tauri命令
-#[tauri::command]
-async fn update_tray_menu(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
-) -> Result<bool, String> {
-    match tray::create_tray_menu(&app, state.inner()) {
-        Ok(new_menu) => {
-            if let Some(tray) = app.tray_by_id(tray::TRAY_ID) {
-                tray.set_menu(Some(new_menu))
-                    .map_err(|e| format!("更新托盘菜单失败: {e}"))?;
-                return Ok(true);
-            }
-            Ok(false)
-        }
-        Err(err) => {
-            log::error!("创建托盘菜单失败: {err}");
-            Ok(false)
-        }
-    }
-}
-
 #[cfg(target_os = "macos")]
 fn macos_tray_icon() -> Option<Image<'static>> {
     const ICON_BYTES: &[u8] = include_bytes!("../icons/tray/macos/statusbar_template_3x.png");
@@ -200,7 +178,7 @@ fn macos_tray_icon() -> Option<Image<'static>> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // 设置 panic hook，在应用崩溃时记录日志到 <app_config_dir>/crash.log（默认 ~/.cc-switch/crash.log）
+    // 设置 panic hook，在应用崩溃时记录日志到 <app_config_dir>/crash.log（默认 ~/.token-use/crash.log）
     panic_hook::setup_panic_hook();
 
     let mut builder = tauri::Builder::default();
@@ -298,7 +276,7 @@ pub fn run() {
                     log::warn!("初始化 Updater 插件失败，已跳过：{e}");
                 }
             }
-            // 初始化日志（单文件输出到 <app_config_dir>/logs/cc-switch.log）
+            // 初始化日志（单文件输出到 <app_config_dir>/logs/token-use.log）
             {
                 use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 
@@ -310,7 +288,7 @@ pub fn run() {
                 }
 
                 // 启动时删除旧日志文件，实现单文件覆盖效果
-                let log_file_path = log_dir.join("cc-switch.log");
+                let log_file_path = log_dir.join("token-use.log");
                 let _ = std::fs::remove_file(&log_file_path);
 
                 app.handle().plugin(
@@ -321,7 +299,7 @@ pub fn run() {
                             Target::new(TargetKind::Stdout),
                             Target::new(TargetKind::Folder {
                                 path: log_dir,
-                                file_name: Some("cc-switch".into()),
+                                file_name: Some("token-use".into()),
                             }),
                         ])
                         // 单文件模式：启动时删除旧文件，达到大小时轮转
@@ -337,7 +315,7 @@ pub fn run() {
 
             // 初始化数据库
             let app_config_dir = crate::config::get_app_config_dir();
-            let db_path = app_config_dir.join("cc-switch.db");
+            let db_path = app_config_dir.join("token-use.db");
             let json_path = app_config_dir.join("config.json");
 
             // 检查是否需要从 config.json 迁移到 SQLite
@@ -709,12 +687,12 @@ pub fn run() {
                 #[cfg(target_os = "linux")]
                 {
                     // Use Tauri's path API to get correct path (includes app identifier)
-                    // tauri-plugin-deep-link writes to: ~/.local/share/com.ccswitch.desktop/applications/cc-switch-handler.desktop
+                    // tauri-plugin-deep-link writes a handler under the app data directory.
                     // Only register if .desktop file doesn't exist to avoid overwriting user customizations
                     let should_register = app
                         .path()
                         .data_dir()
-                        .map(|d| !d.join("applications/cc-switch-handler.desktop").exists())
+                        .map(|d| !d.join("applications/token-use-handler.desktop").exists())
                         .unwrap_or(true);
 
                     if should_register {
@@ -769,16 +747,16 @@ pub fn run() {
 
             // 构建托盘
             let mut tray_builder = TrayIconBuilder::with_id(tray::TRAY_ID)
-                .tooltip("CC Switch") // 鼠标悬停提示
+                .tooltip("Token Use · Today 0 tokens") // 鼠标悬停提示
+                .title("0")
                 .on_tray_icon_event(|tray, event| match event {
-                    // 鼠标悬停/点击到托盘图标时，后台异步刷新用量缓存，
-                    // 让用户下一次（或快速打开菜单的那一刻）看到较新的数字。
-                    // refresh_all_usage_in_tray 内部有 10 秒防抖。
-                    TrayIconEvent::Enter { .. } | TrayIconEvent::Click { .. } => {
-                        let app = tray.app_handle().clone();
-                        tauri::async_runtime::spawn(async move {
-                            crate::tray::refresh_all_usage_in_tray(&app).await;
-                        });
+                    TrayIconEvent::Click { .. } => {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.unminimize();
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
                     }
                     _ => log::debug!("unhandled event {event:?}"),
                 })
@@ -817,6 +795,7 @@ pub fn run() {
             );
             // 将同一个实例注入到全局状态，避免重复创建导致的不一致
             app.manage(app_state);
+            tray::start_tray_usage_title_refresh(app.handle().clone());
 
             // 从数据库加载日志配置并应用
             {
@@ -1044,192 +1023,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::get_providers,
-            commands::get_current_provider,
-            commands::add_provider,
-            commands::update_provider,
-            commands::delete_provider,
-            commands::remove_provider_from_live_config,
-            commands::switch_provider,
-            commands::import_default_config,
-            commands::get_claude_desktop_status,
-            commands::get_claude_desktop_default_routes,
-            commands::import_claude_desktop_providers_from_claude,
-            commands::get_claude_config_status,
-            commands::get_config_status,
-            commands::get_claude_code_config_path,
-            commands::get_config_dir,
-            commands::open_config_folder,
-            commands::pick_directory,
-            commands::open_external,
             commands::get_init_error,
-            commands::get_migration_result,
-            commands::get_skills_migration_result,
-            commands::get_app_config_path,
-            commands::open_app_config_folder,
-            commands::get_claude_common_config_snippet,
-            commands::set_claude_common_config_snippet,
-            commands::get_common_config_snippet,
-            commands::set_common_config_snippet,
-            commands::extract_common_config_snippet,
-            commands::read_live_provider_settings,
-            commands::get_settings,
-            commands::save_settings,
-            commands::get_rectifier_config,
-            commands::set_rectifier_config,
-            commands::get_optimizer_config,
-            commands::set_optimizer_config,
-            commands::get_copilot_optimizer_config,
-            commands::set_copilot_optimizer_config,
-            commands::get_log_config,
-            commands::set_log_config,
-            commands::restart_app,
-            commands::check_for_updates,
-            commands::is_portable_mode,
-            commands::copy_text_to_clipboard,
-            commands::get_claude_plugin_status,
-            commands::read_claude_plugin_config,
-            commands::apply_claude_plugin_config,
-            commands::is_claude_plugin_applied,
-            commands::apply_claude_onboarding_skip,
-            commands::clear_claude_onboarding_skip,
-            // Claude MCP management
-            commands::get_claude_mcp_status,
-            commands::read_claude_mcp_config,
-            commands::upsert_claude_mcp_server,
-            commands::delete_claude_mcp_server,
-            commands::validate_mcp_command,
-            // usage query
-            commands::queryProviderUsage,
-            commands::testUsageScript,
-            // subscription quota
-            commands::get_subscription_quota,
-            commands::get_codex_oauth_quota,
-            commands::get_codex_oauth_models,
-            commands::get_coding_plan_quota,
-            commands::get_balance,
-            // New MCP via config.json (SSOT)
-            commands::get_mcp_config,
-            commands::upsert_mcp_server_in_config,
-            commands::delete_mcp_server_in_config,
-            commands::set_mcp_enabled,
-            // Unified MCP management
-            commands::get_mcp_servers,
-            commands::upsert_mcp_server,
-            commands::delete_mcp_server,
-            commands::toggle_mcp_app,
-            commands::import_mcp_from_apps,
-            // Prompt management
-            commands::get_prompts,
-            commands::upsert_prompt,
-            commands::delete_prompt,
-            commands::enable_prompt,
-            commands::import_prompt_from_file,
-            commands::get_current_prompt_file_content,
-            // model list fetch (OpenAI-compatible /v1/models)
-            commands::fetch_models_for_config,
-            // ours: endpoint speed test + custom endpoint management
-            commands::test_api_endpoints,
-            commands::get_custom_endpoints,
-            commands::add_custom_endpoint,
-            commands::remove_custom_endpoint,
-            commands::update_endpoint_last_used,
-            // app_config_dir override via Store
-            commands::get_app_config_dir_override,
-            commands::set_app_config_dir_override,
-            // provider sort order management
-            commands::update_providers_sort_order,
-            // theirs: config import/export and dialogs
-            commands::export_config_to_file,
-            commands::import_config_from_file,
-            commands::webdav_test_connection,
-            commands::webdav_sync_upload,
-            commands::webdav_sync_download,
-            commands::webdav_sync_save_settings,
-            commands::webdav_sync_fetch_remote_info,
-            commands::save_file_dialog,
-            commands::open_file_dialog,
-            commands::open_zip_file_dialog,
-            commands::create_db_backup,
-            commands::list_db_backups,
-            commands::restore_db_backup,
-            commands::rename_db_backup,
-            commands::delete_db_backup,
-            commands::sync_current_providers_live,
-            // Deep link import
-            commands::parse_deeplink,
-            commands::merge_deeplink_config,
-            commands::import_from_deeplink,
-            commands::import_from_deeplink_unified,
-            update_tray_menu,
-            // Environment variable management
-            commands::check_env_conflicts,
-            commands::delete_env_vars,
-            commands::restore_env_backup,
-            // Skill management (v3.10.0+ unified)
-            commands::get_installed_skills,
-            commands::get_skill_backups,
-            commands::delete_skill_backup,
-            commands::install_skill_unified,
-            commands::uninstall_skill_unified,
-            commands::restore_skill_backup,
-            commands::toggle_skill_app,
-            commands::scan_unmanaged_skills,
-            commands::import_skills_from_apps,
-            commands::discover_available_skills,
-            commands::check_skill_updates,
-            commands::update_skill,
-            commands::migrate_skill_storage,
-            commands::search_skills_sh,
-            // Skill management (legacy API compatibility)
-            commands::get_skills,
-            commands::get_skills_for_app,
-            commands::install_skill,
-            commands::install_skill_for_app,
-            commands::uninstall_skill,
-            commands::uninstall_skill_for_app,
-            commands::get_skill_repos,
-            commands::add_skill_repo,
-            commands::remove_skill_repo,
-            commands::install_skills_from_zip,
-            // Auto launch
-            commands::set_auto_launch,
-            commands::get_auto_launch_status,
-            // Proxy server management
-            commands::start_proxy_server,
-            commands::stop_proxy_server,
-            commands::stop_proxy_with_restore,
-            commands::get_proxy_takeover_status,
-            commands::set_proxy_takeover_for_app,
-            commands::get_proxy_status,
-            commands::get_proxy_config,
-            commands::update_proxy_config,
-            // Global & Per-App Config
-            commands::get_global_proxy_config,
-            commands::update_global_proxy_config,
-            commands::get_proxy_config_for_app,
-            commands::update_proxy_config_for_app,
-            commands::get_default_cost_multiplier,
-            commands::set_default_cost_multiplier,
-            commands::get_pricing_model_source,
-            commands::set_pricing_model_source,
-            commands::is_proxy_running,
-            commands::is_live_takeover_active,
-            commands::switch_proxy_provider,
-            // Proxy failover commands
-            commands::get_provider_health,
-            commands::reset_circuit_breaker,
-            commands::get_circuit_breaker_config,
-            commands::update_circuit_breaker_config,
-            commands::get_circuit_breaker_stats,
-            // Failover queue management
-            commands::get_failover_queue,
-            commands::get_available_providers_for_failover,
-            commands::add_to_failover_queue,
-            commands::remove_from_failover_queue,
-            commands::get_auto_failover_enabled,
-            commands::set_auto_failover_enabled,
-            // Usage statistics
             commands::get_usage_summary,
             commands::get_usage_summary_by_app,
             commands::get_usage_trends,
@@ -1237,115 +1031,15 @@ pub fn run() {
             commands::get_model_stats,
             commands::get_request_logs,
             commands::get_request_detail,
-            commands::get_model_pricing,
-            commands::update_model_pricing,
-            commands::delete_model_pricing,
-            commands::check_provider_limits,
-            // Session usage sync
             commands::sync_session_usage,
             commands::get_usage_data_sources,
-            // Stream health check
-            commands::stream_check_provider,
-            commands::stream_check_all_providers,
-            commands::get_stream_check_config,
-            commands::save_stream_check_config,
-            // Session manager
-            commands::list_sessions,
-            commands::get_session_messages,
-            commands::delete_session,
-            commands::delete_sessions,
-            commands::launch_session_terminal,
-            commands::get_tool_versions,
-            // Provider terminal
-            commands::open_provider_terminal,
-            // Universal Provider management
-            commands::get_universal_providers,
-            commands::get_universal_provider,
-            commands::upsert_universal_provider,
-            commands::delete_universal_provider,
-            commands::sync_universal_provider,
-            // OpenCode specific
-            commands::import_opencode_providers_from_live,
-            commands::get_opencode_live_provider_ids,
-            // OpenClaw specific
-            commands::import_openclaw_providers_from_live,
-            commands::get_openclaw_live_provider_ids,
-            commands::get_openclaw_live_provider,
-            commands::scan_openclaw_config_health,
-            commands::get_openclaw_default_model,
-            commands::set_openclaw_default_model,
-            commands::get_openclaw_model_catalog,
-            commands::set_openclaw_model_catalog,
-            commands::get_openclaw_agents_defaults,
-            commands::set_openclaw_agents_defaults,
-            commands::get_openclaw_env,
-            commands::set_openclaw_env,
-            commands::get_openclaw_tools,
-            commands::set_openclaw_tools,
-            // Hermes specific
-            commands::import_hermes_providers_from_live,
-            commands::get_hermes_live_provider_ids,
-            commands::get_hermes_live_provider,
-            commands::get_hermes_model_config,
-            commands::open_hermes_web_ui,
-            commands::launch_hermes_dashboard,
-            commands::get_hermes_memory,
-            commands::set_hermes_memory,
-            commands::get_hermes_memory_limits,
-            commands::set_hermes_memory_enabled,
-            // Global upstream proxy
-            commands::get_global_proxy_url,
-            commands::set_global_proxy_url,
-            commands::test_proxy_url,
-            commands::get_upstream_proxy_status,
-            commands::scan_local_proxies,
-            // Window theme control
+            commands::get_leaderboard_profile,
+            commands::start_github_leaderboard_login,
+            commands::poll_github_leaderboard_login,
+            commands::sign_out_leaderboard,
+            commands::set_leaderboard_opt_in,
+            commands::get_leaderboard_entries,
             commands::set_window_theme,
-            // Generic managed auth commands
-            commands::auth_start_login,
-            commands::auth_poll_for_account,
-            commands::auth_list_accounts,
-            commands::auth_get_status,
-            commands::auth_remove_account,
-            commands::auth_set_default_account,
-            commands::auth_logout,
-            // Copilot OAuth commands (multi-account support)
-            commands::copilot_start_device_flow,
-            commands::copilot_poll_for_auth,
-            commands::copilot_poll_for_account,
-            commands::copilot_list_accounts,
-            commands::copilot_remove_account,
-            commands::copilot_set_default_account,
-            commands::copilot_get_auth_status,
-            commands::copilot_logout,
-            commands::copilot_is_authenticated,
-            commands::copilot_get_token,
-            commands::copilot_get_token_for_account,
-            commands::copilot_get_models,
-            commands::copilot_get_models_for_account,
-            commands::copilot_get_usage,
-            commands::copilot_get_usage_for_account,
-            // OMO commands
-            commands::read_omo_local_file,
-            commands::get_current_omo_provider_id,
-            commands::disable_current_omo,
-            commands::read_omo_slim_local_file,
-            commands::get_current_omo_slim_provider_id,
-            commands::disable_current_omo_slim,
-            // Workspace files (OpenClaw)
-            commands::read_workspace_file,
-            commands::write_workspace_file,
-            // Daily memory files (OpenClaw workspace)
-            commands::list_daily_memory_files,
-            commands::read_daily_memory_file,
-            commands::write_daily_memory_file,
-            commands::delete_daily_memory_file,
-            commands::search_daily_memory_files,
-            commands::open_workspace_directory,
-            // lightweight mode (for testing or low-resource environments)
-            commands::enter_lightweight_mode,
-            commands::exit_lightweight_mode,
-            commands::is_lightweight_mode,
         ]);
 
     let app = builder
@@ -1733,7 +1427,7 @@ fn show_database_init_error_dialog(
             您的数据尚未丢失，应用不会自动删除数据库文件。\n\
             常见原因包括：数据库版本过新、文件损坏、权限不足、磁盘空间不足等。\n\n\
             建议：\n\
-            1) 先备份整个配置目录（包含 cc-switch.db）\n\
+            1) 先备份整个配置目录（包含 token-use.db）\n\
             2) 如果提示“数据库版本过新”，请升级到更新版本\n\
             3) 如果刚升级出现异常，可回退旧版本导出/备份后再升级\n\n\
             点击「重试」重新尝试初始化\n\
@@ -1747,7 +1441,7 @@ fn show_database_init_error_dialog(
             Your data is NOT lost - the app will not delete the database automatically.\n\
             Common causes include: newer database version, corrupted file, permission issues, or low disk space.\n\n\
             Suggestions:\n\
-            1) Back up the entire config directory (including cc-switch.db)\n\
+            1) Back up the entire config directory (including token-use.db)\n\
             2) If you see “database version is newer”, please upgrade CC Switch\n\
             3) If this happened right after upgrading, consider rolling back to export/backup then upgrade again\n\n\
             Click 'Retry' to attempt initialization again\n\

@@ -1,220 +1,174 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Activity, BarChart3, Clock3, ListFilter } from "lucide-react";
 import { UsageHero } from "./UsageHero";
 import { UsageTrendChart } from "./UsageTrendChart";
 import { RequestLogTable } from "./RequestLogTable";
 import { ProviderStatsTable } from "./ProviderStatsTable";
 import { ModelStatsTable } from "./ModelStatsTable";
-import {
-  KNOWN_APP_TYPES,
-  type AppTypeFilter,
-  type UsageRangeSelection,
+import type {
+  AppTypeFilter,
+  UsageRangePreset,
+  UsageRangeSelection,
 } from "@/types/usage";
-import { motion } from "framer-motion";
-import {
-  BarChart3,
-  ListFilter,
-  Activity,
-  RefreshCw,
-  Coins,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useQueryClient } from "@tanstack/react-query";
-import { usageKeys } from "@/lib/query/usage";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import { PricingConfigPanel } from "@/components/usage/PricingConfigPanel";
-import { cn } from "@/lib/utils";
-import { getLocaleFromLanguage } from "./format";
 import { getUsageRangePresetLabel, resolveUsageRange } from "@/lib/usageRange";
-import { UsageDateRangePicker } from "./UsageDateRangePicker";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getLocaleFromLanguage } from "./format";
 
-const APP_FILTER_OPTIONS: AppTypeFilter[] = ["all", ...KNOWN_APP_TYPES];
+interface UsageDashboardProps {
+  range?: UsageRangeSelection;
+  onRangeChange?: (range: UsageRangeSelection) => void;
+  refreshIntervalMs?: number;
+  allowedPresets?: UsageRangePreset[];
+  showAppFilter?: boolean;
+}
 
-export function UsageDashboard() {
+const DEFAULT_RANGE: UsageRangeSelection = { preset: "today" };
+const DEFAULT_ALLOWED_PRESETS: UsageRangePreset[] = ["today", "7d", "30d"];
+
+export function UsageDashboard({
+  range,
+  onRangeChange,
+  refreshIntervalMs = 30000,
+  allowedPresets = DEFAULT_ALLOWED_PRESETS,
+  showAppFilter = false,
+}: UsageDashboardProps) {
   const { t, i18n } = useTranslation();
-  const queryClient = useQueryClient();
-  const [range, setRange] = useState<UsageRangeSelection>({ preset: "today" });
-  const [appType, setAppType] = useState<AppTypeFilter>("all");
-  const [refreshIntervalMs, setRefreshIntervalMs] = useState(30000);
+  const [internalRange, setInternalRange] =
+    useState<UsageRangeSelection>(DEFAULT_RANGE);
+  const activeRange = range ?? internalRange;
+  const setRange = onRangeChange ?? setInternalRange;
+  const appType: AppTypeFilter = "all";
 
-  const refreshIntervalOptionsMs = [0, 5000, 10000, 30000, 60000] as const;
-  const changeRefreshInterval = () => {
-    const currentIndex = refreshIntervalOptionsMs.indexOf(
-      refreshIntervalMs as (typeof refreshIntervalOptionsMs)[number],
-    );
-    const safeIndex = currentIndex >= 0 ? currentIndex : 3;
-    const nextIndex = (safeIndex + 1) % refreshIntervalOptionsMs.length;
-    const next = refreshIntervalOptionsMs[nextIndex];
-    setRefreshIntervalMs(next);
-    queryClient.invalidateQueries({ queryKey: usageKeys.all });
-  };
+  useEffect(() => {
+    if (!allowedPresets.includes(activeRange.preset)) {
+      setRange({ preset: allowedPresets[0] ?? "today" });
+    }
+  }, [activeRange.preset, allowedPresets, setRange]);
 
   const language = i18n.resolvedLanguage || i18n.language || "en";
   const locale = getLocaleFromLanguage(language);
-  const resolvedRange = useMemo(() => resolveUsageRange(range), [range]);
+  const resolvedRange = useMemo(
+    () => resolveUsageRange(activeRange),
+    [activeRange],
+  );
   const rangeLabel = useMemo(() => {
-    if (range.preset !== "custom") {
-      return getUsageRangePresetLabel(range.preset, t);
+    if (activeRange.preset !== "custom") {
+      return getUsageRangePresetLabel(activeRange.preset, t);
     }
 
     return `${new Date(resolvedRange.startDate * 1000).toLocaleString(locale)} - ${new Date(
       resolvedRange.endDate * 1000,
     ).toLocaleString(locale)}`;
-  }, [locale, range, resolvedRange.endDate, resolvedRange.startDate, t]);
+  }, [
+    activeRange.preset,
+    locale,
+    resolvedRange.endDate,
+    resolvedRange.startDate,
+    t,
+  ]);
+
+  const sectionClass =
+    "rounded-2xl border border-black/10 bg-background/80 p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)] dark:border-white/10 dark:bg-background/70";
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-8 pb-8"
-    >
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <h2 className="text-2xl font-bold">{t("usage.title")}</h2>
-            <p className="text-sm text-muted-foreground">
-              {t("usage.subtitle")}
+    <div className="space-y-4" data-app-filter-visible={showAppFilter}>
+      <UsageHero
+        range={activeRange}
+        appType={undefined}
+        refreshIntervalMs={refreshIntervalMs}
+      />
+
+      <div className={sectionClass}>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+              <Clock3 className="h-3.5 w-3.5" />
+            </span>
+            <div>
+              <h2 className="text-sm font-semibold">趋势</h2>
+              <p className="text-xs text-muted-foreground">{rangeLabel}</p>
+            </div>
+          </div>
+        </div>
+        <UsageTrendChart
+          range={activeRange}
+          rangeLabel={rangeLabel}
+          appType={appType}
+          refreshIntervalMs={refreshIntervalMs}
+        />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <section className={sectionClass} aria-labelledby="model-stats-title">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <BarChart3 className="h-3.5 w-3.5" />
+            </span>
+            <div>
+              <h2 id="model-stats-title" className="text-sm font-semibold">
+                模型消耗
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                按模型聚合 token 与成本
+              </p>
+            </div>
+          </div>
+          <ModelStatsTable
+            range={activeRange}
+            appType={appType}
+            refreshIntervalMs={refreshIntervalMs}
+          />
+        </section>
+
+        <section
+          className={sectionClass}
+          aria-labelledby="provider-stats-title"
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400">
+              <Activity className="h-3.5 w-3.5" />
+            </span>
+            <div>
+              <h2 id="provider-stats-title" className="text-sm font-semibold">
+                来源统计
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                按采集来源保留原始归因
+              </p>
+            </div>
+          </div>
+          <ProviderStatsTable
+            range={activeRange}
+            appType={appType}
+            refreshIntervalMs={refreshIntervalMs}
+          />
+        </section>
+      </div>
+
+      <section className={sectionClass} aria-labelledby="request-log-title">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400">
+            <ListFilter className="h-3.5 w-3.5" />
+          </span>
+          <div>
+            <h2 id="request-log-title" className="text-sm font-semibold">
+              明细记录
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              保留请求级 token、缓存与成本明细
             </p>
           </div>
         </div>
-
-        <div className="rounded-xl border border-border/50 bg-card/40 backdrop-blur-sm p-4">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {APP_FILTER_OPTIONS.map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => setAppType(type)}
-                className={cn(
-                  "px-4 py-1.5 rounded-lg text-sm font-medium transition-all",
-                  appType === type
-                    ? "bg-primary/10 text-primary shadow-sm border border-primary/20"
-                    : "text-muted-foreground hover:text-primary hover:bg-muted/50 border border-transparent",
-                )}
-              >
-                {t(`usage.appFilter.${type}`)}
-              </button>
-            ))}
-
-            <div className="ml-auto flex items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2 text-xs text-muted-foreground"
-                title={t("common.refresh", "刷新")}
-                onClick={changeRefreshInterval}
-              >
-                <RefreshCw className="mr-1 h-3.5 w-3.5" />
-                {refreshIntervalMs > 0 ? `${refreshIntervalMs / 1000}s` : "--"}
-              </Button>
-
-              <UsageDateRangePicker
-                selection={range}
-                triggerLabel={rangeLabel}
-                onApply={(nextRange) => setRange(nextRange)}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <UsageHero
-        range={range}
-        appType={appType === "all" ? undefined : appType}
-        refreshIntervalMs={refreshIntervalMs}
-      />
-
-      <UsageTrendChart
-        range={range}
-        rangeLabel={rangeLabel}
-        appType={appType}
-        refreshIntervalMs={refreshIntervalMs}
-      />
-
-      <div className="space-y-4">
-        <Tabs defaultValue="logs" className="w-full">
-          <div className="flex items-center justify-between mb-4">
-            <TabsList className="bg-muted/50">
-              <TabsTrigger value="logs" className="gap-2">
-                <ListFilter className="h-4 w-4" />
-                {t("usage.requestLogs")}
-              </TabsTrigger>
-              <TabsTrigger value="providers" className="gap-2">
-                <Activity className="h-4 w-4" />
-                {t("usage.providerStats")}
-              </TabsTrigger>
-              <TabsTrigger value="models" className="gap-2">
-                <BarChart3 className="h-4 w-4" />
-                {t("usage.modelStats")}
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <TabsContent value="logs" className="mt-0">
-              <RequestLogTable
-                range={range}
-                rangeLabel={rangeLabel}
-                appType={appType}
-                refreshIntervalMs={refreshIntervalMs}
-                onRangeChange={setRange}
-              />
-            </TabsContent>
-
-            <TabsContent value="providers" className="mt-0">
-              <ProviderStatsTable
-                range={range}
-                appType={appType}
-                refreshIntervalMs={refreshIntervalMs}
-              />
-            </TabsContent>
-
-            <TabsContent value="models" className="mt-0">
-              <ModelStatsTable
-                range={range}
-                appType={appType}
-                refreshIntervalMs={refreshIntervalMs}
-              />
-            </TabsContent>
-          </motion.div>
-        </Tabs>
-      </div>
-
-      <Accordion type="multiple" defaultValue={[]} className="w-full space-y-4">
-        <AccordionItem
-          value="pricing"
-          className="rounded-xl glass-card overflow-hidden"
-        >
-          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
-            <div className="flex items-center gap-3">
-              <Coins className="h-5 w-5 text-yellow-500" />
-              <div className="text-left">
-                <h3 className="text-base font-semibold">
-                  {t("settings.advanced.pricing.title")}
-                </h3>
-                <p className="text-sm text-muted-foreground font-normal">
-                  {t("settings.advanced.pricing.description")}
-                </p>
-              </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
-            <PricingConfigPanel />
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
-    </motion.div>
+        <RequestLogTable
+          range={activeRange}
+          rangeLabel={rangeLabel}
+          appType={appType}
+          refreshIntervalMs={refreshIntervalMs}
+          onRangeChange={setRange}
+          showAppTypeFilter={showAppFilter}
+          showRangePicker={showAppFilter}
+        />
+      </section>
+    </div>
   );
 }

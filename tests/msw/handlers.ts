@@ -380,4 +380,107 @@ export const handlers = [
   ),
   http.post(`${TAURI_ENDPOINT}/reset_circuit_breaker`, () => success(true)),
   http.post(`${TAURI_ENDPOINT}/get_circuit_breaker_stats`, () => success(null)),
+
+  http.post(`${TAURI_ENDPOINT}/get_usage_summary_by_app`, () =>
+    success([
+      {
+        appType: "local",
+        summary: {
+          totalRequests: 2,
+          totalCost: "0.030000",
+          totalInputTokens: 1200,
+          totalOutputTokens: 600,
+          totalCacheCreationTokens: 100,
+          totalCacheReadTokens: 200,
+          successRate: 100,
+          realTotalTokens: 2100,
+          cacheHitRate: 0.1333,
+        },
+      },
+    ]),
+  ),
+  http.post(`${TAURI_ENDPOINT}/get_usage_summary`, () =>
+    success({
+      totalRequests: 2,
+      totalCost: "0.030000",
+      totalInputTokens: 1200,
+      totalOutputTokens: 600,
+      totalCacheCreationTokens: 100,
+      totalCacheReadTokens: 200,
+      successRate: 100,
+      realTotalTokens: 2100,
+      cacheHitRate: 0.1333,
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/get_usage_trends`, () =>
+    success([
+      {
+        date: new Date().toISOString(),
+        requestCount: 2,
+        totalCost: "0.030000",
+        totalTokens: 2100,
+        totalInputTokens: 1200,
+        totalOutputTokens: 600,
+        totalCacheCreationTokens: 100,
+        totalCacheReadTokens: 200,
+      },
+    ]),
+  ),
+  http.post(`${TAURI_ENDPOINT}/get_provider_stats`, () =>
+    success([
+      {
+        providerId: "local",
+        providerName: "Local",
+        requestCount: 2,
+        totalTokens: 2100,
+        totalCost: "0.030000",
+        successRate: 100,
+        avgLatencyMs: 120,
+      },
+    ]),
+  ),
+  http.post(`${TAURI_ENDPOINT}/get_model_stats`, () =>
+    success([
+      {
+        model: "mixed-local",
+        requestCount: 2,
+        totalTokens: 2100,
+        totalCost: "0.030000",
+        avgCostPerRequest: "0.015000",
+      },
+    ]),
+  ),
+  http.post(`${TAURI_ENDPOINT}/get_request_logs`, () =>
+    success({
+      data: [],
+      total: 0,
+      page: 0,
+      pageSize: 20,
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/get_leaderboard_profile`, () => success(null)),
+  http.post(`${TAURI_ENDPOINT}/start_github_leaderboard_login`, () =>
+    success({
+      sessionId: "mock-github-session",
+      userCode: "ABCD-1234",
+      verificationUri: "https://github.com/login/device",
+      expiresAt: Math.floor(Date.now() / 1000) + 900,
+      intervalSeconds: 5,
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/poll_github_leaderboard_login`, () =>
+    success({
+      status: "pending",
+      profile: null,
+      retryAfterSeconds: 5,
+      message: null,
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/get_leaderboard_entries`, () =>
+    success({
+      range: "today",
+      updatedAt: null,
+      entries: [],
+    }),
+  ),
 ];

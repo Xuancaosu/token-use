@@ -40,6 +40,8 @@ interface RequestLogTableProps {
   appType?: string;
   refreshIntervalMs: number;
   onRangeChange?: (range: UsageRangeSelection) => void;
+  showAppTypeFilter?: boolean;
+  showRangePicker?: boolean;
 }
 
 export function RequestLogTable({
@@ -48,6 +50,8 @@ export function RequestLogTable({
   appType: dashboardAppType,
   refreshIntervalMs,
   onRangeChange,
+  showAppTypeFilter = true,
+  showRangePicker = true,
 }: RequestLogTableProps) {
   const { t, i18n } = useTranslation();
 
@@ -127,30 +131,31 @@ export function RequestLogTable({
     <div className="space-y-4">
       <div className="rounded-lg border bg-card/50 p-2 backdrop-blur-sm">
         <div className="flex flex-wrap items-center gap-1.5">
-          {/* App type */}
-          <Select
-            value={
-              dashboardAppTypeActive
-                ? dashboardAppType
-                : draftFilters.appType || "all"
-            }
-            onValueChange={(v) =>
-              applySelectFilter("appType", v === "all" ? undefined : v)
-            }
-            disabled={!!dashboardAppTypeActive}
-          >
-            <SelectTrigger className="h-8 w-[110px] bg-background text-xs">
-              <SelectValue placeholder={t("usage.appType")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("usage.allApps")}</SelectItem>
-              {KNOWN_APP_TYPES.map((at) => (
-                <SelectItem key={at} value={at}>
-                  {t(`usage.appFilter.${at}`, { defaultValue: at })}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {showAppTypeFilter && (
+            <Select
+              value={
+                dashboardAppTypeActive
+                  ? dashboardAppType
+                  : draftFilters.appType || "all"
+              }
+              onValueChange={(v) =>
+                applySelectFilter("appType", v === "all" ? undefined : v)
+              }
+              disabled={!!dashboardAppTypeActive}
+            >
+              <SelectTrigger className="h-8 w-[110px] bg-background text-xs">
+                <SelectValue placeholder={t("usage.appType")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("usage.allApps")}</SelectItem>
+                {KNOWN_APP_TYPES.map((at) => (
+                  <SelectItem key={at} value={at}>
+                    {t(`usage.appFilter.${at}`, { defaultValue: at })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           {/* Status code */}
           <Select
@@ -216,7 +221,7 @@ export function RequestLogTable({
             />
           </div>
 
-          {onRangeChange && (
+          {showRangePicker && onRangeChange && (
             <UsageDateRangePicker
               selection={range}
               triggerLabel={rangeLabel}

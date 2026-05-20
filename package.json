@@ -1,8 +1,16 @@
 {
-  "name": "cc-switch",
-  "version": "3.15.0",
-  "description": "All-in-One Assistant for Claude Code, Codex & Gemini CLI",
+  "name": "token-use",
+  "version": "0.1.0",
+  "description": "macOS token usage monitor with optional leaderboard",
   "type": "module",
+  "homepage": "https://github.com/Xuancaosu/token-use#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Xuancaosu/token-use.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Xuancaosu/token-use/issues"
+  },
   "scripts": {
     "dev": "pnpm tauri dev",
     "build": "pnpm tauri build",

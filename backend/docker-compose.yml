@@ -1,0 +1,19 @@
+services:
+  token-use-backend:
+    build:
+      context: .
+    image: token-use-backend:latest
+    container_name: token-use-backend
+    restart: unless-stopped
+    environment:
+      PORT: "6655"
+      DATA_DIR: /data
+      GITHUB_OAUTH_CLIENT_ID: Ov23li3Cs7WS1Fpu523D
+      CORS_ORIGIN: "*"
+    ports:
+      - "6655:6655"
+    volumes:
+      - token-use-backend-data:/data
+
+volumes:
+  token-use-backend-data:

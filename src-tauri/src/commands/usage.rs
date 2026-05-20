@@ -245,6 +245,7 @@ pub fn delete_model_pricing(state: State<'_, AppState>, model_id: String) -> Res
 /// 手动触发会话日志同步
 #[tauri::command]
 pub fn sync_session_usage(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<crate::services::session_usage::SessionSyncResult, AppError> {
     // 同步 Claude 会话日志
@@ -275,6 +276,8 @@ pub fn sync_session_usage(
             result.errors.push(format!("Gemini 同步失败: {e}"));
         }
     }
+
+    crate::tray::refresh_tray_usage_title(&app);
 
     Ok(result)
 }

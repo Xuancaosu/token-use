@@ -287,6 +287,8 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
+        Self::create_leaderboard_tables(conn)?;
+
         // 尝试添加 live_takeover_active 列到 proxy_config 表
         let _ = conn.execute(
             "ALTER TABLE proxy_config ADD COLUMN live_takeover_active INTEGER NOT NULL DEFAULT 0",
@@ -431,6 +433,16 @@ impl Database {
                         Self::migrate_v9_to_v10(conn)?;
                         Self::set_user_version(conn, 10)?;
                     }
+                    10 => {
+                        log::info!("迁移数据库从 v10 到 v11（Token Use 排行榜支持）");
+                        Self::migrate_v10_to_v11(conn)?;
+                        Self::set_user_version(conn, 11)?;
+                    }
+                    11 => {
+                        log::info!("迁移数据库从 v11 到 v12（远端排行榜登录令牌）");
+                        Self::migrate_v11_to_v12(conn)?;
+                        Self::set_user_version(conn, 12)?;
+                    }
                     _ => {
                         return Err(AppError::Database(format!(
                             "未知的数据库版本 {version}，无法迁移到 {SCHEMA_VERSION}"
@@ -454,6 +466,77 @@ impl Database {
                 Err(e)
             }
         }
+    }
+
+    fn create_leaderboard_tables(conn: &Connection) -> Result<(), AppError> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ranking_profile (
+                user_id TEXT PRIMARY KEY,
+                github_login TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                avatar_url TEXT,
+                auth_token TEXT,
+                opted_in INTEGER NOT NULL DEFAULT 0,
+                is_current INTEGER NOT NULL DEFAULT 0,
+                joined_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ranking_auth_session (
+                id TEXT PRIMARY KEY,
+                state TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                completed_at INTEGER,
+                error TEXT
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ranking_snapshots (
+                user_id TEXT NOT NULL,
+                range_key TEXT NOT NULL,
+                window_start INTEGER NOT NULL,
+                window_end INTEGER NOT NULL,
+                total_tokens INTEGER NOT NULL DEFAULT 0,
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+                request_count INTEGER NOT NULL DEFAULT 0,
+                total_cost_usd TEXT NOT NULL DEFAULT '0',
+                snapshot_at INTEGER NOT NULL,
+                PRIMARY KEY (user_id, range_key, window_start, window_end),
+                FOREIGN KEY (user_id) REFERENCES ranking_profile(user_id) ON DELETE CASCADE
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ranking_snapshots_rank
+             ON ranking_snapshots(range_key, window_start, window_end, total_tokens DESC)",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
+    fn migrate_v10_to_v11(conn: &Connection) -> Result<(), AppError> {
+        Self::create_leaderboard_tables(conn)
+    }
+
+    fn migrate_v11_to_v12(conn: &Connection) -> Result<(), AppError> {
+        Self::create_leaderboard_tables(conn)?;
+        Self::add_column_if_missing(conn, "ranking_profile", "auth_token", "TEXT")?;
+        Ok(())
     }
 
     /// v0 -> v1 迁移：补齐所有缺失列

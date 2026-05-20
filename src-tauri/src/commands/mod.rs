@@ -28,6 +28,7 @@ mod stream_check;
 mod subscription;
 mod sync_support;
 
+mod leaderboard;
 mod lightweight;
 mod usage;
 mod webdav_sync;
@@ -60,6 +61,7 @@ pub use skill::*;
 pub use stream_check::*;
 pub use subscription::*;
 
+pub use leaderboard::*;
 pub use lightweight::*;
 pub use usage::*;
 pub use webdav_sync::*;
